@@ -1,7 +1,8 @@
 streamlit
 ultralytics
+opencv-python-headless
+torch
 pandas
-numpy
 openpyxl
 Pillow
-
+numpy
