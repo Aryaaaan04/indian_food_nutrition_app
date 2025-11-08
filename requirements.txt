@@ -1,6 +1,6 @@
 streamlit
-ultralytics
-opencv-python-headless
+ultralytics==8.2.77
+opencv-python-headless==4.8.1.78
 torch
 pandas
 openpyxl
