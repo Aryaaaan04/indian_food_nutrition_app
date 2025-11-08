@@ -1,68 +1,50 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-from ultralytics import YOLO
 from PIL import Image
+from ultralytics import YOLO
 
-# -------------------
-# Load YOLO Model
-# -------------------
-model_path = "best.pt"  # your model file (upload or link from Drive)
-model = YOLO(model_path)
+# Load model and dataset
+@st.cache_resource
+def load_model():
+    return YOLO("best.pt")
 
-# -------------------
-# Load Nutrient Data
-# -------------------
-excel_path = "Anuvaad_INDB_2024.11.xlsx"
-nutrients = pd.read_excel(excel_path)
+@st.cache_data
+def load_nutrition_data():
+    return pd.read_excel("Anuvaad_INDB_2024.11.xlsx")
 
-# -------------------
-# Function to Get Nutrient Info
-# -------------------
-def get_nutrients(food_name):
-    match = nutrients[nutrients["food_name"].str.contains(food_name, case=False, na=False)]
-    if not match.empty:
-        avg_data = match.mean(numeric_only=True)
-        return {
-            "Calories (kcal)": round(avg_data.get("energy_kcal", 0), 2),
-            "Protein (g)": round(avg_data.get("protein_g", 0), 2),
-            "Carbs (g)": round(avg_data.get("carb_g", 0), 2),
-            "Fat (g)": round(avg_data.get("fat_g", 0), 2),
-            "Fibre (g)": round(avg_data.get("fibre_g", 0), 2),
-            "Matched Rows": len(match)
-        }
-    else:
-        return None
+model = load_model()
+nutrients = load_nutrition_data()
 
-# -------------------
-# Streamlit App UI
-# -------------------
-st.title("🍛 Indian Food Detection & Nutrition Estimation App")
-st.write("Upload an Indian food image to detect its name and view its nutritional values.")
+st.title("🍛 Indian Food Recognition & Nutrition Estimation")
+st.markdown("Upload a food image to detect the dish and view its nutritional information!")
 
-uploaded_file = st.file_uploader("📸 Upload an image", type=["jpg", "jpeg", "png"])
+uploaded_file = st.file_uploader("📸 Upload a food image", type=["jpg", "jpeg", "png"])
 
 if uploaded_file:
-    image = Image.open(uploaded_file)
-    st.image(image, caption="Uploaded Image", use_container_width=True)
+    img = Image.open(uploaded_file)
+    st.image(img, caption="Uploaded Image", use_column_width=True)
 
-    # Prediction
-    st.write("🔍 Detecting food type...")
-    results = model.predict(np.array(image))
+    with st.spinner("🔍 Detecting food item..."):
+        results = model.predict(img)
+        pred = results[0].probs
+        if pred is not None:
+            food_name = results[0].names[pred.top1]
+            conf = pred.top1conf.item() * 100
+            st.success(f"✅ Detected Food: **{food_name}** ({conf:.2f}% confidence)")
 
-    if results[0].probs is not None:
-        class_id = results[0].probs.top1
-        class_name = results[0].names[class_id]
-        confidence = results[0].probs.top1conf.item() * 100
+            # Nutrient lookup
+            match = nutrients[nutrients["food_name"].str.contains(food_name, case=False, na=False)]
 
-        st.success(f"✅ Predicted Food: **{class_name}** ({confidence:.2f}% confidence)")
-
-        # Get nutrients
-        info = get_nutrients(class_name)
-        if info:
-            st.subheader("🥗 Nutritional Information (per 100g approx)")
-            st.table(pd.DataFrame([info]))
+            if not match.empty:
+                avg_data = match.mean(numeric_only=True)
+                st.subheader("🥗 Nutritional Information (per serving)")
+                st.write(f"**Calories:** {round(avg_data.get('energy_kcal', 0), 2)} kcal")
+                st.write(f"**Protein:** {round(avg_data.get('protein_g', 0), 2)} g")
+                st.write(f"**Carbs:** {round(avg_data.get('carb_g', 0), 2)} g")
+                st.write(f"**Fat:** {round(avg_data.get('fat_g', 0), 2)} g")
+                st.write(f"**Fibre:** {round(avg_data.get('fibre_g', 0), 2)} g")
+            else:
+                st.warning("⚠️ No matching nutrient data found for this item.")
         else:
-            st.warning("⚠️ No nutritional data found for this dish in database.")
-    else:
-        st.error("❌ No food detected. Try another image.")
+            st.error("❌ No food detected. Please upload a clearer image.")
